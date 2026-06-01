@@ -1,9 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { AUTH_COOKIE, authToken } from "@/lib/gate";
 
-// Protect everything except Next internals and the login endpoints.
+// Protect pages only. API routes enforce auth themselves (see lib/require-auth)
+// so their compressed responses never pass through middleware (which can corrupt
+// the Content-Encoding of large gzip/br bodies).
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|login|api/login).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|login|api).*)"],
 };
 
 export async function middleware(req: NextRequest) {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { dedupeRules, dedupeTxns, recategorize, rulesFromAnswers } from "@/lib/commit";
 import { computeSubscriptionUpdates } from "@/lib/subscriptions";
+import { isAuthed } from "@/lib/require-auth";
 import {
   appendLedger,
   appendRules,
@@ -26,6 +27,9 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(req: Request) {
   try {
+    if (!(await isAuthed(req))) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     const body = await req.json();
     const toAdd: Txn[] = Array.isArray(body.toAdd) ? body.toAdd : [];
     const answers: ReviewAnswer[] = Array.isArray(body.answers) ? body.answers : [];

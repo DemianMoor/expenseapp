@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { processRows } from "@/lib/process";
 import { parseCsv } from "@/lib/parse";
 import { ensureTabs, readFx, readRules } from "@/lib/sheets";
+import { isAuthed } from "@/lib/require-auth";
 import type { RawRow } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -15,6 +16,9 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(req: Request) {
   try {
+    if (!(await isAuthed(req))) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     const body = await req.json();
     let rows: RawRow[] = [];
     if (typeof body.csv === "string") rows = parseCsv(body.csv);

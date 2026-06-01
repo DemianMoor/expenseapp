@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isAuthed } from "@/lib/require-auth";
 import {
   ensureTabs,
   getSheetId,
@@ -17,8 +18,11 @@ export const dynamic = "force-dynamic";
  * managed tabs exist (creating/seeding any that are missing — the intended
  * first-run behavior), then reads rules + FX back. Touches no transaction data.
  */
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    if (!(await isAuthed(req))) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     const before = await getSpreadsheetInfo();
     const { created } = await ensureTabs();
     const after = await getSpreadsheetInfo();

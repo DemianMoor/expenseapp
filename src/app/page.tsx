@@ -18,6 +18,21 @@ interface CommitResult {
 
 const sheetUrl = `https://docs.google.com/spreadsheets/d/${DEFAULT_SHEET_ID}/edit`;
 
+/** Parse a fetch response as JSON, with a clear error if the body isn't JSON. */
+async function readJson(res: Response): Promise<{ ok: boolean; data: Record<string, unknown> }> {
+  const text = await res.text();
+  try {
+    return { ok: res.ok, data: JSON.parse(text) };
+  } catch {
+    const snippet = text.slice(0, 120).replace(/\s+/g, " ").trim();
+    throw new Error(
+      res.status === 401
+        ? "Session expired — please reload and log in again."
+        : `Server returned a non-JSON response (HTTP ${res.status})${snippet ? `: ${snippet}` : ""}`
+    );
+  }
+}
+
 export default function Page() {
   const [stage, setStage] = useState<Stage>("upload");
   const [busy, setBusy] = useState(false);
@@ -38,9 +53,9 @@ export default function Page() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ csv }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Processing failed");
-      const result = data as ProcessResult;
+      const { ok, data } = await readJson(res);
+      if (!ok) throw new Error((data.error as string) || "Processing failed");
+      const result = data as unknown as ProcessResult;
       setProc(result);
       // Seed default answers (first category) for each unknown.
       const seed: Record<string, ReviewAnswer> = {};
@@ -76,9 +91,9 @@ export default function Page() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ toAdd: result.toAdd, answers: Object.values(ans) }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Commit failed");
-      setCommit(data as CommitResult);
+      const { ok, data } = await readJson(res);
+      if (!ok) throw new Error((data.error as string) || "Commit failed");
+      setCommit(data as unknown as CommitResult);
       setStage("confirm");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");
