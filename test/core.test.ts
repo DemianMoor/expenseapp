@@ -9,6 +9,7 @@ import { computeSubscriptionUpdates } from "@/lib/subscriptions";
 import { dedupeRules, dedupeTxns, recategorize, rulesFromAnswers } from "@/lib/commit";
 import { SEED_FX, SEED_RULES } from "@/lib/seed";
 import { summaryQueryFormula, usdFormula } from "@/lib/fx-formula";
+import { categoryFormula } from "@/lib/category-formula";
 import type { Txn } from "@/lib/types";
 
 // --- Synthetic fixture. 14 columns we actually read; first header carries a BOM. ---
@@ -264,6 +265,23 @@ describe("fx formulas (date-based GOOGLEFINANCE)", () => {
   it("references the right row number", () => {
     expect(usdFormula(53)).toContain("K53");
     expect(usdFormula(53)).toContain("B53");
+  });
+
+  it("category formula: Fee shortcut, Merchant Rules lookup, Uncategorized fallback", () => {
+    const f = categoryFormula(2);
+    expect(f).toContain('IF($M2="Fee","Banking & Card Fees"');
+    expect(f).toContain("'Merchant Rules'!$A$2:$A");
+    expect(f).toContain("'Merchant Rules'!$B$2:$B");
+    expect(f).toContain("SEARCH(");
+    expect(f).toContain("$F2"); // matches against the Description column
+    expect(f).toContain('"Uncategorized"');
+    // wildcard chars in keywords are escaped so GOOGLE*CLOUD matches literally
+    expect(f).toContain('SUBSTITUTE');
+  });
+
+  it("category formula references the right row", () => {
+    expect(categoryFormula(40)).toContain("$F40");
+    expect(categoryFormula(40)).toContain("$M40");
   });
 
   it("summary QUERY groups by month+category and sums USD", () => {

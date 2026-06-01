@@ -19,6 +19,7 @@ import {
 import type { FxRates, Rule, SummaryRow, Txn } from "./types";
 import type { SubscriptionUpdate, SubTarget } from "./subscriptions";
 import { summaryQueryFormula, usdFormula } from "./fx-formula";
+import { categoryFormula } from "./category-formula";
 
 export const SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
 
@@ -290,28 +291,39 @@ async function nextLedgerRow(): Promise<number> {
 }
 
 /**
- * Append txns at a deterministic location (so per-row USD formulas reference the
+ * Append txns at a deterministic location (so per-row formulas reference the
  * right cells). Text columns are written RAW to avoid formula injection from
- * merchant strings; the USD column is then (re)written as a date-based formula.
+ * merchant strings; the Category (G) and USD (L) columns are then (re)written
+ * as live formulas keyed off Merchant Rules / FX.
  */
 export async function appendLedger(txns: Txn[]): Promise<void> {
   if (txns.length > 0) {
     const start = await nextLedgerRow();
     await setValues(`${TAB_LEDGER}!A${start}`, txns.map(txnToRow), "RAW");
   }
-  await refreshLedgerUsdFormulas();
+  await refreshLedgerFormulas();
+}
+
+/** Count of ledger data rows (non-empty Transaction ID). */
+async function ledgerRowCount(): Promise<number> {
+  const colA = await getValues(`${TAB_LEDGER}!A2:A`);
+  return colA.filter((r) => (r[0] ?? "").trim() !== "").length;
 }
 
 /**
- * (Re)write the USD column (L) as date-based GOOGLEFINANCE formulas for every
- * data row. Idempotent; also migrates pre-existing numeric USD cells.
+ * (Re)write the live ledger formulas for every data row, also migrating any
+ * pre-existing static cells:
+ *   - Category (G): looks up Merchant Rules by Description (category-formula.ts)
+ *   - USD (L): date-based GOOGLEFINANCE conversion (fx-formula.ts)
+ * Idempotent.
  */
-export async function refreshLedgerUsdFormulas(): Promise<number> {
-  const colA = await getValues(`${TAB_LEDGER}!A2:A`);
-  const n = colA.filter((r) => (r[0] ?? "").trim() !== "").length;
+export async function refreshLedgerFormulas(): Promise<number> {
+  const n = await ledgerRowCount();
   if (n === 0) return 0;
-  const formulas = Array.from({ length: n }, (_, i) => [usdFormula(i + 2)]);
-  await setValues(`${TAB_LEDGER}!L2:L${n + 1}`, formulas, "USER_ENTERED");
+  const categories = Array.from({ length: n }, (_, i) => [categoryFormula(i + 2)]);
+  const usd = Array.from({ length: n }, (_, i) => [usdFormula(i + 2)]);
+  await setValues(`${TAB_LEDGER}!G2:G${n + 1}`, categories, "USER_ENTERED");
+  await setValues(`${TAB_LEDGER}!L2:L${n + 1}`, usd, "USER_ENTERED");
   return n;
 }
 
@@ -446,12 +458,12 @@ function txnToRow(t: Txn): (string | number)[] {
     t.card,
     t.merchant,
     t.description,
-    t.category,
+    "", // Category (G): filled by refreshLedgerFormulas() as a Merchant Rules lookup
     t.subscription,
     t.mccDesc,
     t.amount,
     t.currency,
-    "", // USD: filled by refreshLedgerUsdFormulas() as a date-based formula
+    "", // USD (L): filled by refreshLedgerFormulas() as a date-based formula
     t.type,
   ];
 }
