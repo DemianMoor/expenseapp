@@ -23,7 +23,10 @@ import { summaryQueryFormula, usdFormula } from "./fx-formula";
 export const SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
 
 export function getSheetId(): string {
-  return process.env.SHEET_ID || DEFAULT_SHEET_ID;
+  const raw = (process.env.SHEET_ID || DEFAULT_SHEET_ID).trim();
+  // Tolerate a full Sheet URL being pasted instead of the bare ID.
+  const m = raw.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  return m ? m[1] : raw;
 }
 
 const OAUTH_CLIENT_PATH = process.env.GOOGLE_OAUTH_CLIENT_PATH || resolve(process.cwd(), "oauth_client.json");

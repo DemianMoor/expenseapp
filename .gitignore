@@ -19,3 +19,4 @@ service-account*.json
 credentials*.json
 oauth_client.json
 .google-token.json
+REFRESH_TOKEN.txt
