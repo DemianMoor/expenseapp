@@ -1,0 +1,21 @@
+/node_modules
+/.next
+/out
+/build
+/.vercel
+*.tsbuildinfo
+next-env.d.ts
+dev.log
+err.log
+
+# real financial data — never commit transaction exports
+/samples/*.csv
+
+# secrets — never commit credentials or tokens
+.env
+.env.local
+*.service-account.json
+service-account*.json
+credentials*.json
+oauth_client.json
+.google-token.json
