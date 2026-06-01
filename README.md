@@ -91,6 +91,30 @@ The acceptance numbers in §10 of the brief are validated against the operator's
 real May 2026 CSV (not committed). The test suite here validates every rule in
 §5 against a synthetic fixture so a regression is caught without credentials.
 
+## Deploy to Vercel
+
+The app runs serverlessly with credentials supplied as env vars.
+
+1. **Import** `github.com/DemianMoor/expenseapp` in the Vercel dashboard
+   (New Project → Import). Framework auto-detects as **Next.js** — no build
+   settings to change.
+2. **Environment variables** (Project → Settings → Environment Variables). Run
+   `node scripts/print-env.mjs` locally to get the values, then add:
+   - `SHEET_ID`
+   - `GOOGLE_OAUTH_CLIENT_B64` — base64 of `oauth_client.json`
+   - `GOOGLE_REFRESH_TOKEN` — the refresh token from `.google-token.json`
+   - `APP_PASSWORD` — the login password for the public URL
+3. **Deploy.** Visit the URL → enter `APP_PASSWORD` → use normally.
+
+**Important — avoid a weekly auth break:** if the Google OAuth consent screen is
+in *Testing*, refresh tokens expire after 7 days. In Google Cloud Console →
+*OAuth consent screen*, **Publish app** (Production). Then re-run
+`npm run authorize` once and update `GOOGLE_REFRESH_TOKEN` in Vercel with the new
+value. (Internal/Workspace user type also avoids the expiry.)
+
+The app password gate is active whenever `APP_PASSWORD` is set; leave it unset
+locally to skip the login screen.
+
 ## Date-based FX via GOOGLEFINANCE
 
 Conversion to USD happens **inside the Sheet, using live Google rates for each
