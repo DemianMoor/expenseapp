@@ -31,17 +31,23 @@ const TOKEN_PATH = process.env.GOOGLE_TOKEN_PATH || resolve(process.cwd(), ".goo
 
 /** Resolve the OAuth client {id, secret} from env (Vercel) or the local file. */
 function loadOAuthClientConf(): { client_id: string; client_secret: string } | null {
-  const b64 = process.env.GOOGLE_OAUTH_CLIENT_B64;
-  if (b64) {
-    const raw = JSON.parse(Buffer.from(b64, "base64").toString("utf-8"));
-    const conf = raw.installed || raw.web || raw;
-    if (conf?.client_id && conf?.client_secret) return conf;
-  }
+  // Prefer the two short, paste-safe vars when present.
   if (process.env.GOOGLE_OAUTH_CLIENT_ID && process.env.GOOGLE_OAUTH_CLIENT_SECRET) {
     return {
-      client_id: process.env.GOOGLE_OAUTH_CLIENT_ID,
-      client_secret: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
+      client_id: process.env.GOOGLE_OAUTH_CLIENT_ID.trim(),
+      client_secret: process.env.GOOGLE_OAUTH_CLIENT_SECRET.trim(),
     };
+  }
+  // Base64 of the whole oauth_client.json. Tolerate a mangled value (don't crash).
+  const b64 = process.env.GOOGLE_OAUTH_CLIENT_B64;
+  if (b64) {
+    try {
+      const raw = JSON.parse(Buffer.from(b64.replace(/\s+/g, ""), "base64").toString("utf-8"));
+      const conf = raw.installed || raw.web || raw;
+      if (conf?.client_id && conf?.client_secret) return conf;
+    } catch {
+      // fall through — a corrupt B64 must not take down auth
+    }
   }
   if (existsSync(OAUTH_CLIENT_PATH)) {
     const raw = JSON.parse(readFileSync(OAUTH_CLIENT_PATH, "utf-8"));
