@@ -59,8 +59,10 @@ function loadOAuthClientConf(): { client_id: string; client_secret: string } | n
 
 /** Resolve the stored OAuth token (refresh_token) from env (Vercel) or the local file. */
 function loadOAuthToken(): Record<string, unknown> | null {
-  if (process.env.GOOGLE_REFRESH_TOKEN) {
-    return { refresh_token: process.env.GOOGLE_REFRESH_TOKEN };
+  const rt = process.env.GOOGLE_REFRESH_TOKEN;
+  if (rt) {
+    // Strip stray whitespace/newlines and surrounding quotes from pasting.
+    return { refresh_token: rt.trim().replace(/^["']|["']$/g, "") };
   }
   if (existsSync(TOKEN_PATH)) {
     return JSON.parse(readFileSync(TOKEN_PATH, "utf-8"));
