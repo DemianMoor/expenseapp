@@ -18,7 +18,7 @@ import {
 } from "./seed";
 import type { FxRates, Rule, SummaryRow, Txn } from "./types";
 import type { SubscriptionUpdate, SubTarget } from "./subscriptions";
-import { summaryQueryFormula, usdFormula } from "./fx-formula";
+import { summaryFormula, usdFormula } from "./fx-formula";
 import { categoryFormula } from "./category-formula";
 
 export const SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
@@ -327,27 +327,100 @@ export async function refreshLedgerFormulas(): Promise<number> {
   return n;
 }
 
-/** Install the live Monthly Summary QUERY formula (§5.8). Idempotent. */
+/**
+ * Install the live Monthly Summary formula (per-month category rows + a Total
+ * row, §5.8) and apply visual formatting. Idempotent.
+ */
 export async function writeSummary(): Promise<void> {
-  await clearValues(`${TAB_SUMMARY}!A2:C`);
-  await setValues(`${TAB_SUMMARY}!A2`, [[summaryQueryFormula(TAB_LEDGER)]], "USER_ENTERED");
+  await clearValues(`${TAB_SUMMARY}!A1:C`);
+  await setValues(`${TAB_SUMMARY}!A1`, [[summaryFormula(TAB_LEDGER)]], "USER_ENTERED");
+  await formatSummaryTab();
 }
 
 /**
- * Read back the (computed) Monthly Summary rows for one month, retrying briefly
- * so GOOGLEFINANCE/QUERY have a chance to resolve after a write.
+ * Visual separation on the Monthly Summary tab (idempotent — clears its own
+ * conditional rules first): bold "Total" rows, alternating shading per month,
+ * bold + frozen header. Pure formatting; the data stays formula-driven.
+ */
+export async function formatSummaryTab(): Promise<void> {
+  const sheets = getSheets();
+  const meta = await sheets.spreadsheets.get({
+    spreadsheetId: getSheetId(),
+    fields: "sheets(properties(sheetId,title),conditionalFormats)",
+  });
+  const sheet = (meta.data.sheets ?? []).find((s) => s.properties?.title === TAB_SUMMARY);
+  if (!sheet || sheet.properties?.sheetId == null) return;
+  const sheetId = sheet.properties.sheetId;
+  const cfCount = (sheet.conditionalFormats ?? []).length;
+  const range = { sheetId, startRowIndex: 1, endRowIndex: 500, startColumnIndex: 0, endColumnIndex: 3 };
+
+  const requests: sheets_v4.Schema$Request[] = [];
+  // Remove our previously-added rules so re-runs don't stack duplicates.
+  for (let i = 0; i < cfCount; i++) requests.push({ deleteConditionalFormatRule: { sheetId, index: 0 } });
+  // Bold "Total" rows (highest priority).
+  requests.push({
+    addConditionalFormatRule: {
+      index: 0,
+      rule: {
+        ranges: [range],
+        booleanRule: {
+          condition: { type: "CUSTOM_FORMULA", values: [{ userEnteredValue: '=$B2="Total"' }] },
+          format: { textFormat: { bold: true }, backgroundColor: { red: 0.89, green: 0.89, blue: 0.89 } },
+        },
+      },
+    },
+  });
+  // Alternating shading per month group (self-contained — counts month changes in col A).
+  requests.push({
+    addConditionalFormatRule: {
+      index: 1,
+      rule: {
+        ranges: [range],
+        booleanRule: {
+          condition: {
+            type: "CUSTOM_FORMULA",
+            values: [{ userEnteredValue: "=ISEVEN(SUMPRODUCT(($A$2:$A2<>$A$1:$A1)*1))" }],
+          },
+          format: { backgroundColor: { red: 0.93, green: 0.96, blue: 1 } },
+        },
+      },
+    },
+  });
+  // Bold header + freeze it.
+  requests.push({
+    repeatCell: {
+      range: { sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: 3 },
+      cell: { userEnteredFormat: { textFormat: { bold: true } } },
+      fields: "userEnteredFormat.textFormat.bold",
+    },
+  });
+  requests.push({
+    updateSheetProperties: {
+      properties: { sheetId, gridProperties: { frozenRowCount: 1 } },
+      fields: "gridProperties.frozenRowCount",
+    },
+  });
+
+  await sheets.spreadsheets.batchUpdate({ spreadsheetId: getSheetId(), requestBody: { requests } });
+}
+
+/**
+ * Read back the (computed) Monthly Summary category rows for one month (excluding
+ * the Total row), retrying briefly so GOOGLEFINANCE/formulas can resolve.
  */
 export async function readSummaryMonth(month: string, attempts = 5): Promise<SummaryRow[]> {
   for (let i = 0; i < attempts; i++) {
     const rows = await getValues(`${TAB_SUMMARY}!A2:C`);
     const forMonth = rows
-      .filter((r) => (r[0] ?? "").trim() === month && (r[1] ?? "").trim() !== "")
+      .filter((r) => {
+        const cat = (r[1] ?? "").trim();
+        return (r[0] ?? "").trim() === month && cat !== "" && cat !== "Total";
+      })
       .map((r) => ({
         month: (r[0] ?? "").trim(),
         category: (r[1] ?? "").trim(),
         usd: Number(String(r[2] ?? "0").replace(/[, ]/g, "")) || 0,
       }));
-    // Resolved if we have rows and none are still computing (NaN -> 0 already).
     if (forMonth.length > 0) return forMonth.sort((a, b) => b.usd - a.usd);
     if (i < attempts - 1) await sleep(1200);
   }

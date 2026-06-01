@@ -8,7 +8,7 @@ import { buildSummary, groupUnknowns, processRows } from "@/lib/process";
 import { computeSubscriptionUpdates } from "@/lib/subscriptions";
 import { dedupeRules, dedupeTxns, recategorize, rulesFromAnswers } from "@/lib/commit";
 import { SEED_FX, SEED_RULES } from "@/lib/seed";
-import { summaryQueryFormula, usdFormula } from "@/lib/fx-formula";
+import { summaryFormula, usdFormula } from "@/lib/fx-formula";
 import { categoryFormula } from "@/lib/category-formula";
 import type { Txn } from "@/lib/types";
 
@@ -284,11 +284,13 @@ describe("fx formulas (date-based GOOGLEFINANCE)", () => {
     expect(categoryFormula(40)).toContain("$M40");
   });
 
-  it("summary QUERY groups by month+category and sums USD", () => {
-    const q = summaryQueryFormula("All Transactions");
+  it("summary formula: per-month category rows + a Total row, grouped/summed", () => {
+    const q = summaryFormula("All Transactions");
     expect(q).toContain("'All Transactions'!A2:M");
     expect(q).toContain("select C, G, sum(L)");
     expect(q).toContain("group by C, G");
+    expect(q).toContain('"Total"'); // bold total row per month
+    expect(q).toContain("REDUCE"); // stacks each month's block
   });
 });
 

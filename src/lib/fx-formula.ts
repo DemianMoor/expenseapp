@@ -34,12 +34,24 @@ export function usdFormula(row: number): string {
 }
 
 /**
- * Monthly Summary as a single live QUERY over the ledger (§5.8). Recomputes
- * automatically as the ledger (and its date-based USD formulas) settle, so the
- * "current month accumulates / past months freeze" behavior is preserved with
- * zero server-side summation. Columns: C=Month, G=Category, L=USD.
+ * Monthly Summary as a single live formula (§5.8): per month, the category rows
+ * (Month, Category, sum USD) followed by a "Total" row, with months in ascending
+ * order. Recomputes automatically as the ledger (categories + date-based USD)
+ * settles — current month accumulates, past months freeze, no server-side
+ * summation. Ledger columns: A=Transaction ID, C=Month, G=Category, L=USD.
+ * Visual separation (alternating month shading, bold Total rows) is applied by
+ * formatSummaryTab() in sheets.ts.
  */
-export function summaryQueryFormula(ledgerTab: string): string {
-  const src = `'${ledgerTab}'!A2:M`;
-  return `=IFERROR(QUERY(${src},"select C, G, sum(L) where A is not null and L is not null group by C, G order by C, G label sum(L) ''",0),)`;
+export function summaryFormula(ledgerTab: string): string {
+  const t = `'${ledgerTab}'`;
+  const src = `${t}!A2:M`;
+  // Ascending list of months that actually have transactions.
+  const months = `SORT(UNIQUE(FILTER(${t}!C2:C,${t}!A2:A<>"")))`;
+  // Per-month category rows (Month, Category, sum USD), ordered by category.
+  const catRows = `QUERY(${src},"select C, G, sum(L) where C = '"&mo&"' and A is not null group by C, G order by G label sum(L) ''",0)`;
+  // A bold "Total" row per month (formatting applied separately).
+  const totalRow = `{mo,"Total",SUM(FILTER(${t}!L2:L,${t}!C2:C=mo))}`;
+  // Stack header + each month's category rows + its Total row.
+  const body = `REDUCE({"Month","Category","USD"},${months},LAMBDA(acc,mo,VSTACK(acc,${catRows},${totalRow})))`;
+  return `=IFERROR(${body},{"Month","Category","USD"})`;
 }
